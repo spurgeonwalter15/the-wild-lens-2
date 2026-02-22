@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VR Headset Display</title>
+    
+    <script>if (window.top !== window.self) window.top.location = window.self.location;</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; height: 100vh; width: 100vw; }
+        #container { display: flex; width: 100vw; height: 100vh; position: relative; }
+        .eye { flex: 1; overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; }
+        
+        video { height: 100%; width: 100%; object-fit: cover; transform: scale(1.2); border-radius: 50%; transition: filter 0.3s ease; }
+        
+        .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: none; }
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: screen; opacity: 0.9; }
+
+        .horse-blindspot { background: linear-gradient(90deg, transparent 35%, #000 40%, #000 60%, transparent 65%); }
+        .deer-streak { background: linear-gradient(0deg, rgba(0,0,0,0.8) 0%, transparent 35%, transparent 65%, rgba(0,0,0,0.8) 100%); backdrop-filter: blur(4px); }
+
+        .dog-filter { filter: url(#dichromacy) blur(1px) contrast(1.1); }
+        .horse-filter { filter: url(#dichromacy) contrast(1.2); }
+        .deer-filter { filter: url(#dichromacy) brightness(1.15); }
+        .nightjar-filter { filter: grayscale(1) brightness(1.8) contrast(1.3) sepia(0.5) hue-rotate(180deg); }
+    </style>
+</head>
+<body onclick="startVR()">
+
+    <svg style="display:none">
+        <filter id="dichromacy"><feColorMatrix type="matrix" values="0.567, 0.433, 0, 0, 0, 0.558, 0.442, 0, 0, 0, 0, 0.242, 0.758, 0, 0, 0, 0, 0, 1, 0"/></filter>
+    </svg>
+
+    <div id="container">
+        <div class="eye">
+            <video id="v1" autoplay playsinline muted></video>
+            <canvas id="c1"></canvas>
+            <div id="oh1" class="overlay horse-blindspot"></div>
+            <div id="od1" class="overlay deer-streak"></div>
+        </div>
+        <div class="eye">
+            <video id="v2" autoplay playsinline muted></video>
+            <canvas id="c2"></canvas>
+            <div id="oh2" class="overlay horse-blindspot"></div>
+            <div id="od2" class="overlay deer-streak"></div>
+        </div>
+    </div>
+
+    <script>
+        const v1 = document.getElementById('v1'); const v2 = document.getElementById('v2');
+        const c1 = document.getElementById('c1'); const c2 = document.getElementById('c2');
+        const ctx1 = c1.getContext('2d'); const ctx2 = c2.getContext('2d');
+        
+        let currentMode = 'normal';
+        let motionThreshold = 50; // NEW: Global sensitivity variable controlled by the laptop
+
+        const procCanvas = document.createElement('canvas'); procCanvas.width = 128; procCanvas.height = 128;
+        const procCtx = procCanvas.getContext('2d', { willReadFrequently: true });
+        let lastImageData = null;
+
+        let audioCtx; let lastPingTime = 0;
+
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playPing() {
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+            if (now - lastPingTime < 0.4) return; 
+            lastPingTime = now;
+            
+            const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+            osc.type = 'sine'; osc.frequency.setValueAtTime(880, now); osc.frequency.exponentialRampToValueAtTime(440, now + 0.1); 
+            gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.5, now + 0.02); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3); 
+            osc.connect(gain); gain.connect(audioCtx.destination); osc.start(now); osc.stop(now + 0.3);
+        }
+
+        async function init() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } });
+                v1.srcObject = stream; v2.srcObject = stream; requestAnimationFrame(processVideo); 
+            } catch (err) { alert("Camera access required."); }
+        }
+
+        // --- UPGRADED IOT RECEIVER ---
+        const secretChannel = "my-dood-vr-headset-channel-777"; 
+        const client = new Paho.MQTT.Client("broker.hivemq.com", 8000, "vr-headset-" + Math.floor(Math.random() * 10000));
+
+        client.onMessageArrived = function (message) {
+            // Split the incoming message (e.g., "mode:horse" -> ["mode", "horse"])
+            const commandData = message.payloadString.split(":");
+            const commandType = commandData[0];
+            const commandValue = commandData[1];
+
+            if (commandType === 'mode') {
+                setMode(commandValue);
+            } else if (commandType === 'sens') {
+                // Update the threshold variable in real-time
+                motionThreshold = parseInt(commandValue);
+            }
+        };
+
+        client.connect({ onSuccess: () => { client.subscribe(secretChannel); } });
+
+        function setMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.overlay').forEach(o => o.style.display = "none");
+            v1.className = ""; v2.className = "";
+            
+            if (mode === 'dog') { v1.className = "dog-filter"; v2.className = "dog-filter"; } 
+            else if (mode === 'horse') { v1.className = "horse-filter"; v2.className = "horse-filter"; document.querySelectorAll('.horse-blindspot').forEach(o => o.style.display = "block"); } 
+            else if (mode === 'deer') { v1.className = "deer-filter"; v2.className = "deer-filter"; document.querySelectorAll('.deer-streak').forEach(o => o.style.display = "block"); } 
+            else if (mode === 'nightjar') { v1.className = "nightjar-filter"; v2.className = "nightjar-filter"; }
+        }
+
+        function processVideo() {
+            if (currentMode === 'nightjar' && v1.readyState === v1.HAVE_ENOUGH_DATA) {
+                c1.width = c1.clientWidth; c1.height = c1.clientHeight; c2.width = c2.clientWidth; c2.height = c2.clientHeight;
+                procCtx.drawImage(v1, 0, 0, 128, 128);
+                const currentImageData = procCtx.getImageData(0, 0, 128, 128); const data = currentImageData.data;
+                const outputImageData = procCtx.createImageData(128, 128); const outData = outputImageData.data;
+
+                let motionPixels = 0; 
+
+                if (lastImageData) {
+                    const lastData = lastImageData.data;
+                    for (let i = 0; i < data.length; i += 4) {
+                        const diff = Math.abs(data[i] - lastData[i]) + Math.abs(data[i+1] - lastData[i+1]) + Math.abs(data[i+2] - lastData[i+2]);
+                        
+                        // USING THE LIVE SLIDER VALUE HERE
+                        if (diff > motionThreshold) { 
+                            outData[i] = 0; outData[i+1] = 255; outData[i+2] = 255; outData[i+3] = 255; 
+                            motionPixels++; 
+                        } else { 
+                            outData[i+3] = 0; 
+                        }
+                    }
+                }
+                
+                if (motionPixels > 80) playPing();
+
+                lastImageData = currentImageData; procCtx.putImageData(outputImageData, 0, 0);
+                ctx1.drawImage(procCanvas, 0, 0, c1.width, c1.height); ctx2.drawImage(procCanvas, 0, 0, c2.width, c2.height);
+            } else {
+                ctx1.clearRect(0, 0, c1.width, c1.height); ctx2.clearRect(0, 0, c2.width, c2.height); lastImageData = null; 
+            }
+            requestAnimationFrame(processVideo);
+        }
+
+        function startVR() { 
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen(); 
+            initAudio(); 
+        }
+        init();
+    </script>
+</body>
+</html>
