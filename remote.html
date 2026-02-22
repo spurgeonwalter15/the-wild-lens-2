@@ -2,57 +2,34 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>VR Director's Console</title>
+    <title>VR Remote</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     <style>
-        body { background: #111; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-        h1 { color: #00ffcc; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 30px; }
-        button { padding: 20px 40px; font-size: 18px; border-radius: 10px; border: none; background: #333; color: white; cursor: pointer; transition: 0.2s; }
-        button:hover { background: #00ffcc; color: black; }
-        #status { margin-top: 20px; font-size: 14px; color: #ff4444; }
+        body { background: #111; color: white; font-family: sans-serif; text-align: center; padding-top: 50px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 300px; margin: 20px auto; }
+        button { padding: 20px; border: none; border-radius: 10px; background: #333; color: white; cursor: pointer; }
+        button:active { background: #00ffcc; color: #000; }
+        #status { color: #555; font-size: 12px; }
     </style>
 </head>
 <body>
-
-    <h1>VR Control Room</h1>
-    <div id="status">Connecting to communication server...</div>
-
+    <h2>VR REMOTE</h2>
+    <div id="status">Connecting...</div>
     <div class="grid">
-        <button onclick="sendCommand('normal')">Human</button>
-        <button onclick="sendCommand('dog')">Dog</button>
-        <button onclick="sendCommand('horse')">Horse</button>
-        <button onclick="sendCommand('deer')">Deer</button>
-        <button onclick="sendCommand('nightjar')" style="grid-column: span 2;">Nightjar (Motion)</button>
+        <button onclick="send('mode:normal')">Human</button>
+        <button onclick="send('mode:dog')">Dog</button>
+        <button onclick="send('mode:horse')">Horse</button>
+        <button onclick="send('mode:deer')">Deer</button>
+        <button onclick="send('mode:nightjar')">Nightjar</button>
     </div>
-
+    <input type="range" min="10" max="150" value="50" oninput="send('sens:'+this.value)">
     <script>
-        // Connect to a free, public IoT broker
-        const client = new Paho.MQTT.Client("broker.hivemq.com", 8000, "laptop-remote-" + Math.floor(Math.random() * 10000));
-        const statusText = document.getElementById('status');
-        
-        // This is your secret walkie-talkie channel. Keep it unique!
-        const secretChannel = "my-dood-vr-headset-channel-777"; 
-
-        client.connect({
-            onSuccess: () => {
-                statusText.innerText = "CONNECTED: Ready to broadcast to headset.";
-                statusText.style.color = "#00ffcc";
-            },
-            onFailure: () => {
-                statusText.innerText = "Connection failed. Please refresh.";
-            }
-        });
-
-        function sendCommand(mode) {
-            if (client.isConnected()) {
-                const message = new Paho.MQTT.Message(mode);
-                message.destinationName = secretChannel;
-                client.send(message);
-                console.log("Sent command: " + mode);
-            } else {
-                alert("Wait for the connection to establish.");
-            }
+        const client = new Paho.MQTT.Client("broker.hivemq.com", 8000, "remote-" + Math.floor(Math.random() * 1000));
+        client.connect({ onSuccess: () => { document.getElementById('status').innerText = "Connected to Headset"; } });
+        function send(payload) {
+            const msg = new Paho.MQTT.Message(payload);
+            msg.destinationName = "my-dood-vr-777";
+            client.send(msg);
         }
     </script>
 </body>
