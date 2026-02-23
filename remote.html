@@ -13,7 +13,7 @@
         button:active { background: #00ffcc; color: #000; }
         .fs { background: #600; grid-column: span 2; border-color: #a00; }
         .fs:active { background: #f00; color: white; }
-        #status { font-size: 14px; color: #aaa; margin-bottom: 20px; font-weight: bold; }
+        #status { font-size: 14px; color: #ff4444; margin-bottom: 20px; font-weight: bold; }
         
         .slider-box { background: #1a1a1a; max-width: 400px; margin: 30px auto; padding: 20px; border-radius: 12px; border: 1px solid #333;}
         input[type=range] { width: 100%; margin: 15px 0; accent-color: #00ffcc; cursor: pointer;}
@@ -45,15 +45,23 @@
     </div>
 
     <script>
-        // IoT Transmitter (Matches Headset)
+        // IoT Transmitter (Secure WSS)
         const TOPIC = "VR_PROJECT_DOOD_9876"; 
-        const client = new Paho.MQTT.Client("broker.hivemq.com", 8000, "rem_" + Math.random().toString(16).slice(2));
+        const client = new Paho.MQTT.Client("broker.hivemq.com", 8884, "rem_" + Math.random().toString(16).slice(2));
 
-        client.connect({ onSuccess: () => {
-            const stat = document.getElementById('status');
-            stat.innerText = "ONLINE: Linked to VR Headset";
-            stat.style.color = "#00ffcc";
-        }});
+        client.connect({ 
+            useSSL: true,
+            onSuccess: () => {
+                const stat = document.getElementById('status');
+                stat.innerText = "ONLINE: Linked to VR Headset";
+                stat.style.color = "#00ffcc";
+            },
+            onFailure: (err) => {
+                const stat = document.getElementById('status');
+                stat.innerText = "CONNECTION FAILED. Retrying...";
+                stat.style.color = "#ff4444";
+            }
+        });
 
         function send(p) {
             if (!client.isConnected()) {
