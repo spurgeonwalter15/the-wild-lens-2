@@ -14,10 +14,10 @@
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
             background: #111; z-index: 100000;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            color: #00ffcc; cursor: pointer; text-align: center;
+            color: #00ffcc; cursor: pointer; text-align: center; padding: 20px; box-sizing: border-box;
         }
         #start-screen h1 { font-size: 24px; letter-spacing: 2px; border: 2px solid #00ffcc; padding: 20px 40px; border-radius: 10px;}
-        #start-screen p { color: #888; font-size: 12px; margin-top: 20px; }
+        #start-error { color: #ffaa00; font-size: 14px; margin-top: 20px; font-weight: bold; font-family: monospace; max-width: 80%; word-wrap: break-word;}
 
         #container { display: flex; width: 100vw; height: 100vh; position: relative; }
         .eye { flex: 1; overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; border-right: 1px solid #111; }
@@ -57,7 +57,7 @@
 
     <div id="start-screen" onclick="setupVR()">
         <h1>TAP TO START VR</h1>
-        <p id="start-error">Requires HTTPS connection and Camera Access</p>
+        <p id="start-error">Ready to initialize camera...</p>
     </div>
 
     <div id="sync-light"></div>
@@ -87,6 +87,7 @@
         const ctx1 = c1.getContext('2d'); const ctx2 = c2.getContext('2d');
         const sync = document.getElementById('sync-light');
         const labels = [document.getElementById('lbl1'), document.getElementById('lbl2')];
+        const logText = document.getElementById('start-error'); // Diagnostic output
 
         let currentMode = 'normal';
         let sens = 50;
@@ -111,33 +112,88 @@
         client.connect({ 
             useSSL: true, 
             onSuccess: () => { client.subscribe(TOPIC); sync.style.background = "#0f0"; },
-            onFailure: (err) => { console.log("MQTT Error: " + err.errorMessage); sync.style.background = "#f00"; }
+            onFailure: (err) => { logText.innerText = "MQTT Error: " + err.errorMessage; sync.style.background = "#f00"; }
         });
 
-        // CRASH FIX: Safe Fullscreen Check
         function forceFullscreenFallback() {
             try {
                 const docEl = document.documentElement;
                 if (docEl.requestFullscreen) {
                     docEl.requestFullscreen().catch(()=>{});
                 } else if (docEl.webkitRequestFullscreen) {
-                    docEl.webkitRequestFullscreen(); // Safari Fallback
+                    docEl.webkitRequestFullscreen(); 
                 }
-            } catch(e) { console.log("Fullscreen API not supported on this device"); }
+            } catch(e) {}
         }
 
         async function setupVR() {
-            document.getElementById('start-screen').style.display = 'none';
+            logText.innerText = "Step 1: Attempting to grab camera...";
             forceFullscreenFallback();
 
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                alert("Camera API blocked! Make sure your link starts with https://");
-                document.getElementById('start-screen').style.display = 'flex';
+                logText.innerText = "ERROR: Browser API completely blocked. Check HTTPS or Settings.";
                 return;
             }
 
             try {
-                const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1920 } } });
+                // REMOVED { ideal: 1920 } TO PREVENT OVERCONSTRAINED CRASH
+                const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                
+                logText.innerText = "Step 2: Camera found. Routing to VR lenses...";
                 v1.srcObject = s; v2.srcObject = s;
                 
-                // CRASH FIX
+                v1.onloadedmetadata = () => { v1.play().catch(e => logText.innerText = "Play Error V1: " + e.message); };
+                v2.onloadedmetadata = () => { v2.play().catch(e => logText.innerText = "Play Error V2: " + e.message); };
+                
+                // If we survive to this point, hide the screen and start!
+                document.getElementById('start-screen').style.display = 'none';
+                requestAnimationFrame(loop);
+
+            } catch (e) { 
+                // This is the money shot: it will tell us EXACTLY why it crashed
+                logText.innerText = `FATAL ERROR: [${e.name}] ${e.message}`;
+                logText.style.color = "#ff4444";
+            }
+        }
+
+        function setMode(m) {
+            currentMode = m;
+            document.querySelectorAll('.overlay').forEach(o => o.style.display = "none");
+            
+            v1.className = (m === 'normal') ? "" : m + "-filter";
+            v2.className = (m === 'normal') ? "" : m + "-filter";
+            
+            const modeNames = { 'normal':'Human Vision', 'dog':'Dog Vision', 'horse':'Horse Vision', 'deer':'Deer Vision', 'nightjar':'Nightjar Vision' };
+            labels.forEach(l => l.innerText = modeNames[m] || 'Unknown');
+
+            if (m === 'horse') document.querySelectorAll('.horse-blindspot').forEach(o => o.style.display = "block");
+            if (m === 'deer') document.getElementById('od1').style.display = document.getElementById('od2').style.display = "block";
+        }
+
+        function loop() {
+            if (currentMode === 'nightjar' && v1.readyState === 4) {
+                c1.width = c1.clientWidth; c1.height = c1.clientHeight;
+                c2.width = c2.clientWidth; c2.height = c2.clientHeight;
+                pCtx.drawImage(v1, 0, 0, 128, 128);
+                const cur = pCtx.getImageData(0, 0, 128, 128);
+                const out = pCtx.createImageData(128, 128);
+
+                if (lastFrame) {
+                    for (let i = 0; i < cur.data.length; i += 4) {
+                        const d = Math.abs(cur.data[i] - lastFrame.data[i]);
+                        if (d > sens) { out.data[i+1]=255; out.data[i+2]=255; out.data[i+3]=255; }
+                    }
+                }
+
+                lastFrame = cur; pCtx.putImageData(out, 0, 0);
+                ctx1.drawImage(pCanv, 0, 0, c1.width, c1.height);
+                ctx2.drawImage(pCanv, 0, 0, c2.width, c2.height);
+            } else { 
+                ctx1.clearRect(0,0,c1.width,c1.height); 
+                ctx2.clearRect(0,0,c2.width,c2.height); 
+            }
+            requestAnimationFrame(loop);
+        }
+    </script>
+</body>
+</html>
