@@ -22,10 +22,11 @@
         #container { display: flex; width: 100vw; height: 100vh; position: relative; }
         .eye { flex: 1; overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; border-right: 1px solid #111; }
         
+        /* UPDATED: Added 'transform' to the transition list for smooth zooming */
         video { 
             height: 100%; width: 100%; object-fit: cover; 
-            transform: scale(1.25); border-radius: 50%;
-            transition: filter 0.3s ease; background: #000;
+            transform: scale(1.0); border-radius: 50%;
+            transition: filter 0.3s ease, transform 0.2s ease-out; background: #000;
         }
 
         .vision-label {
@@ -82,102 +83,4 @@
     <script>
         if (window.top !== window.self) window.top.location = window.self.location;
 
-        const v1 = document.getElementById('v1'); const v2 = document.getElementById('v2');
-        const c1 = document.getElementById('c1'); const c2 = document.getElementById('c2');
-        const ctx1 = c1.getContext('2d'); const ctx2 = c2.getContext('2d');
-        const sync = document.getElementById('sync-light');
-        const labels = [document.getElementById('lbl1'), document.getElementById('lbl2')];
-
-        let currentMode = 'normal';
-        let sens = 50;
-
-        const pCanv = document.createElement('canvas'); pCanv.width = 128; pCanv.height = 128;
-        const pCtx = pCanv.getContext('2d', { willReadFrequently: true });
-        let lastFrame = null;
-
-        // IoT Receiver
-        const TOPIC = "VR_PROJECT_DOOD_9876"; 
-        const client = new Paho.MQTT.Client("broker.hivemq.com", 8884, "hs_" + Math.random().toString(16).slice(2));
-
-        client.onMessageArrived = (m) => {
-            const [cmd, val] = m.payloadString.split(":");
-            if (cmd === 'mode') setMode(val);
-            if (cmd === 'sens') sens = parseInt(val);
-        };
-
-        client.connect({ 
-            useSSL: true, 
-            onSuccess: () => { client.subscribe(TOPIC); sync.style.background = "#0f0"; },
-            onFailure: (err) => { console.log("MQTT Error: " + err.errorMessage); sync.style.background = "#f00"; }
-        });
-
-        function forceFullscreenFallback() {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().catch(()=>{});
-            }
-        }
-
-        async function setupVR() {
-            document.getElementById('start-screen').style.display = 'none';
-            forceFullscreenFallback();
-
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                alert("Camera API blocked! Make sure your link starts with https://");
-                return;
-            }
-
-            try {
-                const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } } });
-                v1.srcObject = s; v2.srcObject = s;
-                
-                v1.play().catch(e=>console.log(e));
-                v2.play().catch(e=>console.log(e));
-                
-                requestAnimationFrame(loop);
-            } catch (e) { 
-                document.getElementById('start-screen').style.display = 'flex';
-                document.getElementById('start-error').innerText = "CAMERA BLOCKED: Please allow camera in browser settings.";
-            }
-        }
-
-        function setMode(m) {
-            currentMode = m;
-            document.querySelectorAll('.overlay').forEach(o => o.style.display = "none");
-            
-            v1.className = (m === 'normal') ? "" : m + "-filter";
-            v2.className = (m === 'normal') ? "" : m + "-filter";
-            
-            const modeNames = { 'normal':'Human Vision', 'dog':'Dog Vision', 'horse':'Horse Vision', 'deer':'Deer Vision', 'nightjar':'Nightjar Vision' };
-            labels.forEach(l => l.innerText = modeNames[m] || 'Unknown');
-
-            if (m === 'horse') document.querySelectorAll('.horse-blindspot').forEach(o => o.style.display = "block");
-            if (m === 'deer') document.getElementById('od1').style.display = document.getElementById('od2').style.display = "block";
-        }
-
-        function loop() {
-            if (currentMode === 'nightjar' && v1.readyState === 4) {
-                c1.width = c1.clientWidth; c1.height = c1.clientHeight;
-                c2.width = c2.clientWidth; c2.height = c2.clientHeight;
-                pCtx.drawImage(v1, 0, 0, 128, 128);
-                const cur = pCtx.getImageData(0, 0, 128, 128);
-                const out = pCtx.createImageData(128, 128);
-
-                if (lastFrame) {
-                    for (let i = 0; i < cur.data.length; i += 4) {
-                        const d = Math.abs(cur.data[i] - lastFrame.data[i]);
-                        if (d > sens) { out.data[i+1]=255; out.data[i+2]=255; out.data[i+3]=255; }
-                    }
-                }
-
-                lastFrame = cur; pCtx.putImageData(out, 0, 0);
-                ctx1.drawImage(pCanv, 0, 0, c1.width, c1.height);
-                ctx2.drawImage(pCanv, 0, 0, c2.width, c2.height);
-            } else { 
-                ctx1.clearRect(0,0,c1.width,c1.height); 
-                ctx2.clearRect(0,0,c2.width,c2.height); 
-            }
-            requestAnimationFrame(loop);
-        }
-    </script>
-</body>
-</html>
+        const v1 = document.getElementById('v1'); const v2 = document.getElementById('v
