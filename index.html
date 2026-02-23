@@ -22,7 +22,6 @@
         #container { display: flex; width: 100vw; height: 100vh; position: relative; }
         .eye { flex: 1; overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; border-right: 1px solid #111; }
         
-        /* UPDATED: Added 'transform' to the transition list for smooth zooming */
         video { 
             height: 100%; width: 100%; object-fit: cover; 
             transform: scale(1.0); border-radius: 50%;
@@ -56,7 +55,7 @@
         <filter id="dichromacy"><feColorMatrix type="matrix" values="0.567, 0.433, 0, 0, 0, 0.558, 0.442, 0, 0, 0, 0, 0.242, 0.758, 0, 0, 0, 0, 0, 1, 0"/></filter>
     </svg>
 
-    <div id="start-screen" onclick="setupVR(); event.stopPropagation();">
+    <div id="start-screen" onclick="setupVR()">
         <h1>TAP TO START VR</h1>
         <p id="start-error">Requires HTTPS connection and Camera Access</p>
     </div>
@@ -83,4 +82,62 @@
     <script>
         if (window.top !== window.self) window.top.location = window.self.location;
 
-        const v1 = document.getElementById('v1'); const v2 = document.getElementById('v
+        const v1 = document.getElementById('v1'); const v2 = document.getElementById('v2');
+        const c1 = document.getElementById('c1'); const c2 = document.getElementById('c2');
+        const ctx1 = c1.getContext('2d'); const ctx2 = c2.getContext('2d');
+        const sync = document.getElementById('sync-light');
+        const labels = [document.getElementById('lbl1'), document.getElementById('lbl2')];
+
+        let currentMode = 'normal';
+        let sens = 50;
+
+        const pCanv = document.createElement('canvas'); pCanv.width = 128; pCanv.height = 128;
+        const pCtx = pCanv.getContext('2d', { willReadFrequently: true });
+        let lastFrame = null;
+
+        const TOPIC = "VR_PROJECT_DOOD_9876"; 
+        const client = new Paho.MQTT.Client("broker.hivemq.com", 8884, "hs_" + Math.random().toString(16).slice(2));
+
+        client.onMessageArrived = (m) => {
+            const [cmd, val] = m.payloadString.split(":");
+            if (cmd === 'mode') setMode(val);
+            if (cmd === 'sens') sens = parseInt(val);
+            if (cmd === 'fov') {
+                v1.style.transform = `scale(${val})`;
+                v2.style.transform = `scale(${val})`;
+            }
+        };
+
+        client.connect({ 
+            useSSL: true, 
+            onSuccess: () => { client.subscribe(TOPIC); sync.style.background = "#0f0"; },
+            onFailure: (err) => { console.log("MQTT Error: " + err.errorMessage); sync.style.background = "#f00"; }
+        });
+
+        // CRASH FIX: Safe Fullscreen Check
+        function forceFullscreenFallback() {
+            try {
+                const docEl = document.documentElement;
+                if (docEl.requestFullscreen) {
+                    docEl.requestFullscreen().catch(()=>{});
+                } else if (docEl.webkitRequestFullscreen) {
+                    docEl.webkitRequestFullscreen(); // Safari Fallback
+                }
+            } catch(e) { console.log("Fullscreen API not supported on this device"); }
+        }
+
+        async function setupVR() {
+            document.getElementById('start-screen').style.display = 'none';
+            forceFullscreenFallback();
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert("Camera API blocked! Make sure your link starts with https://");
+                document.getElementById('start-screen').style.display = 'flex';
+                return;
+            }
+
+            try {
+                const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1920 } } });
+                v1.srcObject = s; v2.srcObject = s;
+                
+                // CRASH FIX
