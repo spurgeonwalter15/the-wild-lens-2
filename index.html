@@ -6,33 +6,27 @@
     <title>VR Display</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     <style>
-        /* KILL BANNER & IFRAMES */
+        /* IFRAME BUSTER / AD BLOCKER */
         #tiiny-host-badge, .tiiny-host-banner, iframe { display: none !important; opacity: 0 !important; }
 
         body { margin: 0; background: #000; overflow: hidden; height: 100vh; width: 100vw; font-family: 'Segoe UI', sans-serif; }
         #container { display: flex; width: 100vw; height: 100vh; position: relative; }
         
-        .eye { flex: 1; overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; }
+        .eye { flex: 1; overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; border-right: 1px solid #111; }
         
         /* DOOD VR OPTIMIZATION */
         video { 
             height: 100%; width: 100%; object-fit: cover; 
             transform: scale(1.25); border-radius: 50%;
-            transition: filter 0.3s ease;
+            transition: filter 0.3s ease; background: #000;
         }
 
-        /* STEREO TEXT OVERLAYS */
+        /* TOP-LEFT STEREO LABELS */
         .vision-label {
-            position: absolute;
-            top: 25%; /* Placed in the upper-third for better VR readability */
-            color: rgba(255, 255, 255, 0.6);
-            font-size: 14px;
-            font-weight: bold;
-            text-transform: uppercase;
-            letter-spacing: 3px;
-            pointer-events: none;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
-            z-index: 100;
+            position: absolute; top: 10%; left: 10%;
+            color: rgba(255, 255, 255, 0.8); font-size: 13px; font-weight: bold;
+            text-transform: uppercase; letter-spacing: 2px; pointer-events: none;
+            text-shadow: 2px 2px 4px rgba(0,0,0,1); z-index: 100; text-align: left;
         }
 
         .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: none; }
@@ -42,9 +36,9 @@
         .horse-blindspot { background: linear-gradient(90deg, transparent 32%, #000 38%, #000 62%, transparent 68%); }
         .deer-streak { background: linear-gradient(0deg, rgba(0,0,0,0.8) 0%, transparent 35%, transparent 65%, rgba(0,0,0,0.8) 100%); backdrop-filter: blur(4px); }
 
-        /* Status Indicator for Connectivity */
-        #sync-light { position: fixed; top: 10px; right: 10px; width: 8px; height: 8px; border-radius: 50%; background: #300; z-index: 9999; }
-        #prompt { position: fixed; bottom: 20px; width: 100%; text-align: center; color: #444; font-size: 10px; letter-spacing: 2px; z-index: 1000;}
+        /* Status UI */
+        #sync-light { position: fixed; top: 10px; right: 10px; width: 10px; height: 10px; border-radius: 50%; background: #500; z-index: 9999; }
+        #prompt { position: fixed; bottom: 20px; width: 100%; text-align: center; color: #555; font-size: 11px; letter-spacing: 2px; z-index: 1000;}
 
         /* Species Filters */
         .dog-filter { filter: url(#dichromacy) blur(1.5px) contrast(1.1); }
@@ -60,7 +54,7 @@
     </svg>
 
     <div id="sync-light"></div>
-    <div id="prompt">TAP SCREEN TO INITIATE</div>
+    <div id="prompt">TAP SCREEN TO INITIATE SYSTEM</div>
 
     <div id="container">
         <div class="eye">
@@ -80,7 +74,6 @@
     </div>
 
     <script>
-        // IFRAME BUSTER
         if (window.top !== window.self) window.top.location = window.self.location;
 
         const v1 = document.getElementById('v1'); const v2 = document.getElementById('v2');
@@ -92,13 +85,25 @@
         let currentMode = 'normal';
         let sens = 50;
 
-        // Motion Processing
+        // Audio & Motion Setup
         const pCanv = document.createElement('canvas'); pCanv.width = 128; pCanv.height = 128;
         const pCtx = pCanv.getContext('2d', { willReadFrequently: true });
         let lastFrame = null;
+        let audioCtx; let lastPingTime = 0;
 
-        // IoT Setup - Ensure this TOPIC matches your remote.html
-        const TOPIC = "VR_PROJECT_USER_X"; 
+        function playPing() {
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+            if (now - lastPingTime < 0.4) return; 
+            lastPingTime = now;
+            const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+            osc.type = 'sine'; osc.frequency.setValueAtTime(880, now); osc.frequency.exponentialRampToValueAtTime(440, now + 0.1); 
+            gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.5, now + 0.02); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3); 
+            osc.connect(gain); gain.connect(audioCtx.destination); osc.start(now); osc.stop(now + 0.3);
+        }
+
+        // IoT Receiver (Matches Remote)
+        const TOPIC = "VR_PROJECT_DOOD_9876"; 
         const client = new Paho.MQTT.Client("broker.hivemq.com", 8000, "hs_" + Math.random().toString(16).slice(2));
 
         client.onMessageArrived = (m) => {
@@ -113,8 +118,10 @@
         async function setupVR() {
             toggleFS();
             document.getElementById('prompt').style.display = 'none';
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
             try {
-                const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } } });
                 v1.srcObject = s; v2.srcObject = s;
                 requestAnimationFrame(loop);
             } catch (e) { alert("Camera Error: " + e.name); }
@@ -128,21 +135,12 @@
             currentMode = m;
             document.querySelectorAll('.overlay').forEach(o => o.style.display = "none");
             
-            // Apply CSS Filters
             v1.className = (m === 'normal') ? "" : m + "-filter";
             v2.className = (m === 'normal') ? "" : m + "-filter";
             
-            // Update Stereo Labels
-            const modeNames = {
-                'normal': 'Human Vision',
-                'dog': 'Dog Vision',
-                'horse': 'Horse Vision',
-                'deer': 'Deer Vision',
-                'nightjar': 'Nightjar Vision'
-            };
+            const modeNames = { 'normal':'Human Vision', 'dog':'Dog Vision', 'horse':'Horse Vision', 'deer':'Deer Vision', 'nightjar':'Nightjar Vision' };
             labels.forEach(l => l.innerText = modeNames[m] || 'Unknown');
 
-            // Apply Specific Overlays
             if (m === 'horse') document.querySelectorAll('.horse-blindspot').forEach(o => o.style.display = "block");
             if (m === 'deer') document.getElementById('od1').style.display = document.getElementById('od2').style.display = "block";
         }
@@ -154,12 +152,16 @@
                 pCtx.drawImage(v1, 0, 0, 128, 128);
                 const cur = pCtx.getImageData(0, 0, 128, 128);
                 const out = pCtx.createImageData(128, 128);
+                let motionCount = 0;
+
                 if (lastFrame) {
                     for (let i = 0; i < cur.data.length; i += 4) {
                         const d = Math.abs(cur.data[i] - lastFrame.data[i]);
-                        if (d > sens) { out.data[i+1]=255; out.data[i+2]=255; out.data[i+3]=255; }
+                        if (d > sens) { out.data[i+1]=255; out.data[i+2]=255; out.data[i+3]=255; motionCount++; }
                     }
                 }
+                if (motionCount > 80) playPing();
+
                 lastFrame = cur; pCtx.putImageData(out, 0, 0);
                 ctx1.drawImage(pCanv, 0, 0, c1.width, c1.height);
                 ctx2.drawImage(pCanv, 0, 0, c2.width, c2.height);
