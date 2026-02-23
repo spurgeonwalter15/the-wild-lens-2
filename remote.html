@@ -14,10 +14,10 @@
         
         #status { font-size: 14px; color: #ff4444; margin-bottom: 20px; font-weight: bold; }
         
-        .slider-box { background: #1a1a1a; max-width: 400px; margin: 30px auto; padding: 20px; border-radius: 12px; border: 1px solid #333;}
+        .slider-box { background: #1a1a1a; max-width: 440px; margin: 20px auto; padding: 20px; border-radius: 12px; border: 1px solid #333; text-align: left;}
         input[type=range] { width: 100%; margin: 15px 0; accent-color: #00ffcc; cursor: pointer;}
         .sens-label { display: flex; justify-content: space-between; font-size: 14px; color: #aaa; }
-        #sens-val { color: #00ffcc; font-weight: bold; font-size: 18px; }
+        .val-text { color: #00ffcc; font-weight: bold; font-size: 16px; }
     </style>
 </head>
 <body>
@@ -35,15 +35,24 @@
     <div class="slider-box">
         <div class="sens-label">
             <span>Nightjar Motion Sensitivity</span>
-            <span id="sens-val">50</span>
+            <span class="val-text" id="sens-val">50</span>
         </div>
         <input type="range" min="10" max="150" value="50" 
                oninput="document.getElementById('sens-val').innerText = this.value"
                onchange="send('sens:'+this.value)">
     </div>
 
+    <div class="slider-box">
+        <div class="sens-label">
+            <span>Field of View (Zoom)</span>
+            <span class="val-text"><span id="fov-val">1.00</span>x</span>
+        </div>
+        <input type="range" min="50" max="200" value="100" 
+               oninput="document.getElementById('fov-val').innerText = (this.value / 100).toFixed(2)"
+               onchange="send('fov:' + (this.value / 100))">
+    </div>
+
     <script>
-        // IoT Transmitter (Secure WSS)
         const TOPIC = "VR_PROJECT_DOOD_9876"; 
         const client = new Paho.MQTT.Client("broker.hivemq.com", 8884, "rem_" + Math.random().toString(16).slice(2));
 
