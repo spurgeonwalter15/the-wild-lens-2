@@ -10,18 +10,26 @@
         #tiiny-host-badge, .tiiny-host-banner, iframe { display: none !important; opacity: 0 !important; }
 
         body { margin: 0; background: #000; overflow: hidden; height: 100vh; width: 100vw; font-family: 'Segoe UI', sans-serif; }
-        #container { display: flex; width: 100vw; height: 100vh; position: relative; }
         
+        /* MASSIVE START SCREEN TO GUARANTEE TAP REGISTRATION */
+        #start-screen {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: #111; z-index: 100000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: #00ffcc; cursor: pointer; text-align: center;
+        }
+        #start-screen h1 { font-size: 24px; letter-spacing: 2px; border: 2px solid #00ffcc; padding: 20px 40px; border-radius: 10px;}
+        #start-screen p { color: #888; font-size: 12px; margin-top: 20px; }
+
+        #container { display: flex; width: 100vw; height: 100vh; position: relative; }
         .eye { flex: 1; overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; border-right: 1px solid #111; }
         
-        /* DOOD VR OPTIMIZATION */
         video { 
             height: 100%; width: 100%; object-fit: cover; 
             transform: scale(1.25); border-radius: 50%;
             transition: filter 0.3s ease; background: #000;
         }
 
-        /* TOP-LEFT STEREO LABELS */
         .vision-label {
             position: absolute; top: 10%; left: 10%;
             color: rgba(255, 255, 255, 0.8); font-size: 13px; font-weight: bold;
@@ -32,29 +40,29 @@
         .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: none; }
         canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: screen; opacity: 0.9; }
 
-        /* Scientific Overlays */
         .horse-blindspot { background: linear-gradient(90deg, transparent 32%, #000 38%, #000 62%, transparent 68%); }
         .deer-streak { background: linear-gradient(0deg, rgba(0,0,0,0.8) 0%, transparent 35%, transparent 65%, rgba(0,0,0,0.8) 100%); backdrop-filter: blur(4px); }
 
-        /* Status UI */
         #sync-light { position: fixed; top: 10px; right: 10px; width: 12px; height: 12px; border-radius: 50%; background: #f00; z-index: 9999; box-shadow: 0 0 5px rgba(0,0,0,0.5); }
-        #prompt { position: fixed; bottom: 20px; width: 100%; text-align: center; color: #555; font-size: 11px; letter-spacing: 2px; z-index: 1000;}
 
-        /* Species Filters */
         .dog-filter { filter: url(#dichromacy) blur(1.5px) contrast(1.1); }
         .horse-filter { filter: url(#dichromacy) contrast(1.2); }
         .deer-filter { filter: url(#dichromacy) brightness(1.2) saturate(1.1); }
         .nightjar-filter { filter: grayscale(1) brightness(1.8) contrast(1.3) sepia(0.6) hue-rotate(180deg); }
     </style>
 </head>
-<body onclick="setupVR()">
+<body>
 
     <svg style="display:none">
         <filter id="dichromacy"><feColorMatrix type="matrix" values="0.567, 0.433, 0, 0, 0, 0.558, 0.442, 0, 0, 0, 0, 0.242, 0.758, 0, 0, 0, 0, 0, 1, 0"/></filter>
     </svg>
 
+    <div id="start-screen" onclick="setupVR()">
+        <h1>TAP TO START VR</h1>
+        <p id="start-error">Requires HTTPS connection and Camera Access</p>
+    </div>
+
     <div id="sync-light"></div>
-    <div id="prompt">TAP SCREEN TO INITIATE SYSTEM</div>
 
     <div id="container">
         <div class="eye">
@@ -102,7 +110,7 @@
             osc.connect(gain); gain.connect(audioCtx.destination); osc.start(now); osc.stop(now + 0.3);
         }
 
-        // IoT Receiver (Secure WSS)
+        // IoT Receiver
         const TOPIC = "VR_PROJECT_DOOD_9876"; 
         const client = new Paho.MQTT.Client("broker.hivemq.com", 8884, "hs_" + Math.random().toString(16).slice(2));
 
@@ -110,7 +118,9 @@
             const [cmd, val] = m.payloadString.split(":");
             if (cmd === 'mode') setMode(val);
             if (cmd === 'sens') sens = parseInt(val);
-            if (cmd === 'fs') toggleFS();
+            if (cmd === 'fs') {
+                if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
+            }
         };
 
         client.connect({ 
@@ -119,20 +129,42 @@
             onFailure: (err) => { console.log("MQTT Error: " + err.errorMessage); sync.style.background = "#f00"; }
         });
 
+        // --- NEW ISOLATED STARTUP SEQUENCE ---
         async function setupVR() {
-            toggleFS();
-            document.getElementById('prompt').style.display = 'none';
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtx.state === 'suspended') audioCtx.resume();
+            // 1. Hide the Start Button
+            document.getElementById('start-screen').style.display = 'none';
+            
+            // 2. Safely trigger Fullscreen
+            try { if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(e=>console.log(e)); } catch(e){}
+
+            // 3. Safely initialize Audio
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (AudioContext && !audioCtx) audioCtx = new AudioContext();
+                if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+            } catch(e) { console.log("Audio Init failed, proceeding anyway."); }
+
+            // 4. Safely load Camera
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert("Camera API blocked! Make sure your link starts with https://");
+                return;
+            }
+
             try {
                 const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } } });
-                v1.srcObject = s; v2.srcObject = s;
+                v1.srcObject = s; 
+                v2.srcObject = s;
+                
+                // EXPLICIT PLAY COMMANDS (Fixes iOS/Safari freezing)
+                v1.play().catch(e=>console.log(e));
+                v2.play().catch(e=>console.log(e));
+                
                 requestAnimationFrame(loop);
-            } catch (e) { alert("Camera Error: " + e.name); }
-        }
-
-        function toggleFS() {
-            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
+            } catch (e) { 
+                alert("Camera Access Denied: " + e.message); 
+                document.getElementById('start-screen').style.display = 'flex';
+                document.getElementById('start-error').innerText = "CAMERA BLOCKED: Please allow camera in browser settings.";
+            }
         }
 
         function setMode(m) {
@@ -152,4 +184,26 @@
         function loop() {
             if (currentMode === 'nightjar' && v1.readyState === 4) {
                 c1.width = c1.clientWidth; c1.height = c1.clientHeight;
-                c2.width = c2.clientWidth; c2.height = c2.
+                c2.width = c2.clientWidth; c2.height = c2.clientHeight;
+                pCtx.drawImage(v1, 0, 0, 128, 128);
+                const cur = pCtx.getImageData(0, 0, 128, 128);
+                const out = pCtx.createImageData(128, 128);
+                let motionCount = 0;
+
+                if (lastFrame) {
+                    for (let i = 0; i < cur.data.length; i += 4) {
+                        const d = Math.abs(cur.data[i] - lastFrame.data[i]);
+                        if (d > sens) { out.data[i+1]=255; out.data[i+2]=255; out.data[i+3]=255; motionCount++; }
+                    }
+                }
+                if (motionCount > 80) playPing();
+
+                lastFrame = cur; pCtx.putImageData(out, 0, 0);
+                ctx1.drawImage(pCanv, 0, 0, c1.width, c1.height);
+                ctx2.drawImage(pCanv, 0, 0, c2.width, c2.height);
+            } else { ctx1.clearRect(0,0,c1.width,c1.height); ctx2.clearRect(0,0,c2.width,c2.height); }
+            requestAnimationFrame(loop);
+        }
+    </script>
+</body>
+</html>
