@@ -37,7 +37,7 @@
         .deer-streak { background: linear-gradient(0deg, rgba(0,0,0,0.8) 0%, transparent 35%, transparent 65%, rgba(0,0,0,0.8) 100%); backdrop-filter: blur(4px); }
 
         /* Status UI */
-        #sync-light { position: fixed; top: 10px; right: 10px; width: 10px; height: 10px; border-radius: 50%; background: #500; z-index: 9999; }
+        #sync-light { position: fixed; top: 10px; right: 10px; width: 12px; height: 12px; border-radius: 50%; background: #f00; z-index: 9999; box-shadow: 0 0 5px rgba(0,0,0,0.5); }
         #prompt { position: fixed; bottom: 20px; width: 100%; text-align: center; color: #555; font-size: 11px; letter-spacing: 2px; z-index: 1000;}
 
         /* Species Filters */
@@ -102,9 +102,9 @@
             osc.connect(gain); gain.connect(audioCtx.destination); osc.start(now); osc.stop(now + 0.3);
         }
 
-        // IoT Receiver (Matches Remote)
+        // IoT Receiver (Secure WSS)
         const TOPIC = "VR_PROJECT_DOOD_9876"; 
-        const client = new Paho.MQTT.Client("broker.hivemq.com", 8000, "hs_" + Math.random().toString(16).slice(2));
+        const client = new Paho.MQTT.Client("broker.hivemq.com", 8884, "hs_" + Math.random().toString(16).slice(2));
 
         client.onMessageArrived = (m) => {
             const [cmd, val] = m.payloadString.split(":");
@@ -113,7 +113,11 @@
             if (cmd === 'fs') toggleFS();
         };
 
-        client.connect({ onSuccess: () => { client.subscribe(TOPIC); sync.style.background = "#0f0"; } });
+        client.connect({ 
+            useSSL: true, 
+            onSuccess: () => { client.subscribe(TOPIC); sync.style.background = "#0f0"; },
+            onFailure: (err) => { console.log("MQTT Error: " + err.errorMessage); sync.style.background = "#f00"; }
+        });
 
         async function setupVR() {
             toggleFS();
@@ -148,26 +152,4 @@
         function loop() {
             if (currentMode === 'nightjar' && v1.readyState === 4) {
                 c1.width = c1.clientWidth; c1.height = c1.clientHeight;
-                c2.width = c2.clientWidth; c2.height = c2.clientHeight;
-                pCtx.drawImage(v1, 0, 0, 128, 128);
-                const cur = pCtx.getImageData(0, 0, 128, 128);
-                const out = pCtx.createImageData(128, 128);
-                let motionCount = 0;
-
-                if (lastFrame) {
-                    for (let i = 0; i < cur.data.length; i += 4) {
-                        const d = Math.abs(cur.data[i] - lastFrame.data[i]);
-                        if (d > sens) { out.data[i+1]=255; out.data[i+2]=255; out.data[i+3]=255; motionCount++; }
-                    }
-                }
-                if (motionCount > 80) playPing();
-
-                lastFrame = cur; pCtx.putImageData(out, 0, 0);
-                ctx1.drawImage(pCanv, 0, 0, c1.width, c1.height);
-                ctx2.drawImage(pCanv, 0, 0, c2.width, c2.height);
-            } else { ctx1.clearRect(0,0,c1.width,c1.height); ctx2.clearRect(0,0,c2.width,c2.height); }
-            requestAnimationFrame(loop);
-        }
-    </script>
-</body>
-</html>
+                c2.width = c2.clientWidth; c2.height = c2.
