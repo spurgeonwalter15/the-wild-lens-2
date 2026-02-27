@@ -108,8 +108,6 @@
         let currentMode = 'normal';
         let sens = 50;
         let currentFov = 1.0;
-        
-        // NEW: Wake Lock Variable
         let wakeLock = null;
 
         const pCanv = document.createElement('canvas'); pCanv.width = 128; pCanv.height = 128;
@@ -136,23 +134,16 @@
             onFailure: (err) => { logText.innerText = "MQTT Error: " + err.errorMessage; sync.style.background = "#f00"; }
         });
 
-        // NEW: Keep Screen Awake Function
         async function requestWakeLock() {
             try {
                 if ('wakeLock' in navigator) {
                     wakeLock = await navigator.wakeLock.request('screen');
-                    console.log("Wake Lock is active! Screen will not turn off.");
                 }
-            } catch (err) {
-                console.log("Wake Lock failed (likely Low Battery Mode): " + err.message);
-            }
+            } catch (err) { console.log("Wake Lock failed."); }
         }
 
-        // NEW: Re-lock the screen if you minimize the browser and come back
         document.addEventListener('visibilitychange', async () => {
-            if (wakeLock !== null && document.visibilityState === 'visible') {
-                requestWakeLock();
-            }
+            if (wakeLock !== null && document.visibilityState === 'visible') requestWakeLock();
         });
 
         function forceFullscreenFallback() {
@@ -165,7 +156,7 @@
 
         async function setupVR() {
             forceFullscreenFallback();
-            requestWakeLock(); // Lock the screen awake!
+            requestWakeLock();
             
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 logText.innerText = "ERROR: Browser API completely blocked. Check HTTPS or Settings.";
@@ -174,10 +165,7 @@
 
             try {
                 const s = await navigator.mediaDevices.getUserMedia({ 
-                    video: { 
-                        facingMode: "environment",
-                        frameRate: { ideal: 60 }
-                    } 
+                    video: { facingMode: "environment", frameRate: { ideal: 60 } } 
                 });
                 v1.srcObject = s; v2.srcObject = s;
                 
@@ -210,12 +198,8 @@
             v2.className = (m === 'normal') ? "wipe-anim" : m + "-filter wipe-anim";
             
             const modeNames = { 
-                'normal':'Human Vision', 
-                'dog':'Dog Vision', 
-                'horse':'Horse Vision', 
-                'deer':'Deer Vision', 
-                'nightjar':'Nightjar Vision',
-                'hummingbird':'Hummingbird Vision'
+                'normal':'Human Vision', 'dog':'Dog Vision', 'horse':'Horse Vision', 
+                'deer':'Deer Vision', 'nightjar':'Nightjar Vision', 'hummingbird':'Hummingbird Vision'
             };
             labels.forEach(l => l.innerText = modeNames[m] || 'Unknown');
 
