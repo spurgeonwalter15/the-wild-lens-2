@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>VR Display</title>
+    <title>VR Display - Master</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     <style>
         #tiiny-host-badge, .tiiny-host-banner, iframe { display: none !important; opacity: 0 !important; }
@@ -24,9 +24,9 @@
         
         video { 
             height: 100%; width: 100%; object-fit: cover; 
-            transform: scale(1.0) translateZ(0); /* Added translateZ for GPU Acceleration */
+            transform: scale(1.0) translateZ(0); 
             border-radius: 50%; background: #000;
-            will-change: transform, filter; /* Tells browser to prepare GPU */
+            will-change: transform, filter; 
         }
 
         @keyframes radialWipe {
@@ -43,24 +43,24 @@
             transform: translateZ(0);
         }
 
-        /* Hardware accelerate the overlays to prevent backdrop-filter lag */
         .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: none; transform: translateZ(0); }
-        
-        /* Canvases hidden by default to save CPU */
         canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: screen; opacity: 0.9; display: none; }
 
-        .horse-blindspot { background: linear-gradient(90deg, transparent 38%, rgba(0,0,0,0.8) 45%, rgba(0,0,0,0.8) 55%, transparent 62%); }
+        /* SCIENTIFIC REVISION: Narrower, more precise frontal blindspot for Horse */
+        .horse-blindspot { background: linear-gradient(90deg, transparent 44%, rgba(0,0,0,0.95) 48%, rgba(0,0,0,0.95) 52%, transparent 56%); }
         
+        /* SCIENTIFIC REVISION: Softer transition into the streak, lighter peripheral tint */
         .deer-streak { 
-            background: rgba(0,0,0,0.4); 
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            -webkit-mask-image: linear-gradient(0deg, black 0%, black 20%, transparent 35%, transparent 65%, black 80%, black 100%);
-            mask-image: linear-gradient(0deg, black 0%, black 20%, transparent 35%, transparent 65%, black 80%, black 100%);
+            background: rgba(0,0,0,0.15); 
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            -webkit-mask-image: linear-gradient(0deg, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 25%, rgba(0,0,0,0) 40%, rgba(0,0,0,0) 60%, rgba(0,0,0,1) 75%, rgba(0,0,0,1) 100%);
+            mask-image: linear-gradient(0deg, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 25%, rgba(0,0,0,0) 40%, rgba(0,0,0,0) 60%, rgba(0,0,0,1) 75%, rgba(0,0,0,1) 100%);
         }
 
         #sync-light { position: fixed; top: 10px; right: 10px; width: 12px; height: 12px; border-radius: 50%; background: #f00; z-index: 9999; box-shadow: 0 0 5px rgba(0,0,0,0.5); }
 
+        /* SCIENTIFIC FILTERS */
         .dog-filter { filter: url(#dichromacy) blur(1.5px) contrast(1.1); }
         .horse-filter { filter: url(#dichromacy) contrast(1.2); }
         .deer-filter { filter: url(#dichromacy) brightness(1.2); }
@@ -125,7 +125,6 @@
             if (cmd === 'sens') sens = parseInt(val);
             if (cmd === 'fov') {
                 currentFov = val;
-                // Keep translateZ to maintain hardware acceleration
                 v1.style.transform = `scale(${currentFov}) translateZ(0)`;
                 v2.style.transform = `scale(${currentFov}) translateZ(0)`;
             }
@@ -153,7 +152,6 @@
             }
 
             try {
-                // EXPLICITLY requesting 60fps for smoother motion
                 const s = await navigator.mediaDevices.getUserMedia({ 
                     video: { 
                         facingMode: "environment",
@@ -206,16 +204,18 @@
                 document.getElementById('od2').style.display = "block";
             }
             
-            // Turn on canvas ONLY for nightjar to save CPU
             if (m === 'nightjar') {
                 c1.style.display = 'block'; c2.style.display = 'block';
             } else {
                 c1.style.display = 'none'; c2.style.display = 'none';
+                // BUG FIX: Dump the old motion frame from memory so it doesn't flash
+                ctx1.clearRect(0,0,c1.width,c1.height);
+                ctx2.clearRect(0,0,c2.width,c2.height);
+                lastFrame = null;
             }
         }
 
         function loop() {
-            // Skips all canvas math if not in nightjar mode
             if (currentMode === 'nightjar' && v1.readyState === 4) {
                 c1.width = c1.clientWidth; c1.height = c1.clientHeight;
                 c2.width = c2.clientWidth; c2.height = c2.clientHeight;
