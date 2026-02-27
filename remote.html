@@ -15,6 +15,10 @@
         
         .bird-btn { background: #305; border-color: #60a; color: #eaf;}
         .bird-btn:hover { background: #407;}
+
+        /* NEW: Auto Sequence Button Style */
+        .seq-btn { background: #055; border-color: #0aa; grid-column: span 2; color: #0ff;}
+        .seq-btn:hover { background: #077; }
         
         #status { font-size: 14px; color: #ff4444; margin-bottom: 20px; font-weight: bold; }
         
@@ -35,6 +39,8 @@
         <button onclick="send('mode:deer')">Deer</button>
         <button onclick="send('mode:nightjar')">Nightjar</button>
         <button class="bird-btn" onclick="send('mode:hummingbird')">Hummingbird</button>
+        
+        <button id="seq-btn" class="seq-btn" onclick="toggleSequence()">🔄 START AUTO-SEQUENCE (15s)</button>
     </div>
 
     <div class="slider-box">
@@ -44,7 +50,7 @@
         </div>
         <input type="range" min="10" max="150" value="50" 
                oninput="document.getElementById('sens-val').innerText = this.value"
-               onchange="send('sens:'+this.value)">
+               onchange="sendRaw('sens:'+this.value)">
     </div>
 
     <div class="slider-box">
@@ -54,12 +60,17 @@
         </div>
         <input type="range" min="50" max="200" value="100" 
                oninput="document.getElementById('fov-val').innerText = (this.value / 100).toFixed(2)"
-               onchange="send('fov:' + (this.value / 100))">
+               onchange="sendRaw('fov:' + (this.value / 100))">
     </div>
 
     <script>
         const TOPIC = "VR_PROJECT_DOOD_9876"; 
         const client = new Paho.MQTT.Client("broker.hivemq.com", 8884, "rem_" + Math.random().toString(16).slice(2));
+
+        // NEW: Sequence Engine Variables
+        let sequenceTimer = null;
+        let seqIndex = 0;
+        const seqModes = ['normal', 'dog', 'horse', 'deer', 'nightjar', 'hummingbird'];
 
         client.connect({ 
             useSSL: true,
@@ -75,7 +86,49 @@
             }
         });
 
+        // 1. Starts or Stops the automated tour
+        function toggleSequence() {
+            if (sequenceTimer) {
+                stopSequence();
+            } else {
+                document.getElementById('seq-btn').innerText = "🛑 STOP SEQUENCE";
+                document.getElementById('seq-btn').style.background = "#800";
+                document.getElementById('seq-btn').style.color = "#fff";
+                
+                seqIndex = 0;
+                triggerSequenceStep(); // Instantly jump to the first mode
+                sequenceTimer = setInterval(triggerSequenceStep, 15000); // Trigger every 15,000 milliseconds
+            }
+        }
+
+        // 2. The brain of the sequence
+        function triggerSequenceStep() {
+            let mode = seqModes[seqIndex];
+            sendRaw('mode:' + mode);
+            seqIndex++;
+            if (seqIndex >= seqModes.length) seqIndex = 0; // Loop back to the start
+        }
+
+        // 3. Shuts down the sequence safely
+        function stopSequence() {
+            if (sequenceTimer) {
+                clearInterval(sequenceTimer);
+                sequenceTimer = null;
+                let btn = document.getElementById('seq-btn');
+                btn.innerText = "🔄 START AUTO-SEQUENCE (15s)";
+                btn.style.background = "#055";
+                btn.style.color = "#0ff";
+            }
+        }
+
+        // 4. Normal button presses override and kill the sequence
         function send(p) {
+            stopSequence(); 
+            sendRaw(p);
+        }
+
+        // 5. The actual network transmitter
+        function sendRaw(p) {
             if (!client.isConnected()) {
                 alert("Wait for connection to establish.");
                 return;
