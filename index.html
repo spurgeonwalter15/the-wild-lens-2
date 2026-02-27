@@ -22,9 +22,11 @@
         #container { display: flex; width: 100vw; height: 100vh; position: relative; }
         .eye { flex: 1; overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; border-right: 1px solid #111; }
         
+        /* FIX 1: will-change and translateZ(0) force Hardware/GPU Acceleration */
         video { 
             height: 100%; width: 100%; object-fit: cover; 
-            transform: scale(1.0); border-radius: 50%; background: #000;
+            transform: scale(1.0) translateZ(0); border-radius: 50%; background: #000;
+            will-change: filter, transform; 
         }
 
         @keyframes radialWipe {
@@ -41,23 +43,21 @@
         }
 
         .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: none; }
-        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: screen; opacity: 0.9; }
+        /* Optimization: will-change on canvas too */
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: screen; opacity: 0.9; will-change: contents; }
 
         .horse-blindspot { background: linear-gradient(90deg, transparent 38%, rgba(0,0,0,0.8) 45%, rgba(0,0,0,0.8) 55%, transparent 62%); }
         
-        /* FIX: Real Visual Streak using a CSS Mask */
         .deer-streak { 
             background: rgba(0,0,0,0.4); 
             backdrop-filter: blur(8px);
             -webkit-backdrop-filter: blur(8px);
-            /* This cuts a perfectly clear window horizontally across the middle 30% of the screen */
             -webkit-mask-image: linear-gradient(0deg, black 0%, black 20%, transparent 35%, transparent 65%, black 80%, black 100%);
             mask-image: linear-gradient(0deg, black 0%, black 20%, transparent 35%, transparent 65%, black 80%, black 100%);
         }
 
         #sync-light { position: fixed; top: 10px; right: 10px; width: 12px; height: 12px; border-radius: 50%; background: #f00; z-index: 9999; box-shadow: 0 0 5px rgba(0,0,0,0.5); }
 
-        /* Scientific Optic Filters */
         .dog-filter { filter: url(#dichromacy) blur(1.5px) contrast(1.1); }
         .horse-filter { filter: url(#dichromacy) contrast(1.2); }
         .deer-filter { filter: url(#dichromacy) brightness(1.2); }
@@ -88,139 +88,4 @@
         </div>
         <div class="eye">
             <video id="v2" autoplay playsinline muted></video>
-            <canvas id="c2"></canvas>
-            <div class="vision-label" id="lbl2">Human Vision</div>
-            <div id="oh2" class="overlay horse-blindspot"></div>
-            <div id="od2" class="overlay deer-streak"></div>
-        </div>
-    </div>
-
-    <script>
-        if (window.top !== window.self) window.top.location = window.self.location;
-
-        const v1 = document.getElementById('v1'); const v2 = document.getElementById('v2');
-        const c1 = document.getElementById('c1'); const c2 = document.getElementById('c2');
-        const ctx1 = c1.getContext('2d'); const ctx2 = c2.getContext('2d');
-        const sync = document.getElementById('sync-light');
-        const labels = [document.getElementById('lbl1'), document.getElementById('lbl2')];
-        const logText = document.getElementById('start-error');
-
-        let currentMode = 'normal';
-        let sens = 50;
-        let currentFov = 1.0;
-
-        const pCanv = document.createElement('canvas'); pCanv.width = 128; pCanv.height = 128;
-        const pCtx = pCanv.getContext('2d', { willReadFrequently: true });
-        let lastFrame = null;
-
-        const TOPIC = "VR_PROJECT_DOOD_9876"; 
-        const client = new Paho.MQTT.Client("broker.hivemq.com", 8884, "hs_" + Math.random().toString(16).slice(2));
-
-        client.onMessageArrived = (m) => {
-            const [cmd, val] = m.payloadString.split(":");
-            if (cmd === 'mode') setMode(val);
-            if (cmd === 'sens') sens = parseInt(val);
-            if (cmd === 'fov') {
-                currentFov = val;
-                v1.style.transform = `scale(${currentFov})`;
-                v2.style.transform = `scale(${currentFov})`;
-            }
-        };
-
-        client.connect({ 
-            useSSL: true, 
-            onSuccess: () => { client.subscribe(TOPIC); sync.style.background = "#0f0"; },
-            onFailure: (err) => { logText.innerText = "MQTT Error: " + err.errorMessage; sync.style.background = "#f00"; }
-        });
-
-        function forceFullscreenFallback() {
-            try {
-                const docEl = document.documentElement;
-                if (docEl.requestFullscreen) docEl.requestFullscreen().catch(()=>{});
-                else if (docEl.webkitRequestFullscreen) docEl.webkitRequestFullscreen(); 
-            } catch(e) {}
-        }
-
-        async function setupVR() {
-            forceFullscreenFallback();
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                logText.innerText = "ERROR: Browser API completely blocked. Check HTTPS or Settings.";
-                return;
-            }
-
-            try {
-                const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-                v1.srcObject = s; v2.srcObject = s;
-                
-                v1.onloadedmetadata = () => { v1.play().catch(e => logText.innerText = "Play Error: " + e.message); };
-                v2.onloadedmetadata = () => { v2.play().catch(e => logText.innerText = "Play Error: " + e.message); };
-                
-                document.getElementById('start-screen').style.display = 'none';
-                requestAnimationFrame(loop);
-            } catch (e) { 
-                logText.innerText = `FATAL ERROR: [${e.name}] ${e.message}`;
-                logText.style.color = "#ff4444";
-            }
-        }
-
-        function triggerWipe() {
-            v1.classList.remove('wipe-anim'); v2.classList.remove('wipe-anim');
-            void v1.offsetWidth; 
-            v1.classList.add('wipe-anim'); v2.classList.add('wipe-anim');
-        }
-
-        function setMode(m) {
-            if (m === currentMode) return;
-            currentMode = m;
-            
-            triggerWipe(); 
-
-            document.querySelectorAll('.overlay').forEach(o => o.style.display = "none");
-            
-            v1.className = (m === 'normal') ? "wipe-anim" : m + "-filter wipe-anim";
-            v2.className = (m === 'normal') ? "wipe-anim" : m + "-filter wipe-anim";
-            
-            const modeNames = { 
-                'normal':'Human Vision', 
-                'dog':'Dog Vision', 
-                'horse':'Horse Vision', 
-                'deer':'Deer Vision', 
-                'nightjar':'Nightjar Vision',
-                'hummingbird':'Hummingbird Vision'
-            };
-            labels.forEach(l => l.innerText = modeNames[m] || 'Unknown');
-
-            if (m === 'horse') document.querySelectorAll('.horse-blindspot').forEach(o => o.style.display = "block");
-            if (m === 'deer') {
-                document.getElementById('od1').style.display = "block";
-                document.getElementById('od2').style.display = "block";
-            }
-        }
-
-        function loop() {
-            if (currentMode === 'nightjar' && v1.readyState === 4) {
-                c1.width = c1.clientWidth; c1.height = c1.clientHeight;
-                c2.width = c2.clientWidth; c2.height = c2.clientHeight;
-                pCtx.drawImage(v1, 0, 0, 128, 128);
-                const cur = pCtx.getImageData(0, 0, 128, 128);
-                const out = pCtx.createImageData(128, 128);
-
-                if (lastFrame) {
-                    for (let i = 0; i < cur.data.length; i += 4) {
-                        const d = Math.abs(cur.data[i] - lastFrame.data[i]);
-                        if (d > sens) { out.data[i+1]=255; out.data[i+2]=255; out.data[i+3]=255; }
-                    }
-                }
-
-                lastFrame = cur; pCtx.putImageData(out, 0, 0);
-                ctx1.drawImage(pCanv, 0, 0, c1.width, c1.height);
-                ctx2.drawImage(pCanv, 0, 0, c2.width, c2.height);
-            } else { 
-                ctx1.clearRect(0,0,c1.width,c1.height); 
-                ctx2.clearRect(0,0,c2.width,c2.height); 
-            }
-            requestAnimationFrame(loop);
-        }
-    </script>
-</body>
-</html>
+            <canvas id="c2
