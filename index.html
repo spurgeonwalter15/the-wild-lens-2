@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>VR Display - High-Res Master</title>
+    <title>VR Display - Res Control</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     <style>
         #tiiny-host-badge, .tiiny-host-banner, iframe { display: none !important; opacity: 0 !important; }
@@ -58,7 +58,6 @@
 
         #sync-light { position: fixed; top: 10px; right: 10px; width: 12px; height: 12px; border-radius: 50%; background: #f00; z-index: 9999; box-shadow: 0 0 5px rgba(0,0,0,0.5); }
 
-        /* Scientific Optic Filters */
         .dog-filter { filter: url(#dichromacy) blur(1.5px) contrast(1.1); }
         .horse-filter { filter: url(#dichromacy) contrast(1.2); }
         .deer-filter { filter: url(#dichromacy) brightness(1.2); }
@@ -110,6 +109,7 @@
         let sens = 50;
         let currentFov = 1.0;
         let wakeLock = null;
+        let currentStream = null; // NEW: Tracks the active camera feed
 
         const pCanv = document.createElement('canvas'); pCanv.width = 128; pCanv.height = 128;
         const pCtx = pCanv.getContext('2d', { willReadFrequently: true });
@@ -127,6 +127,7 @@
                 v1.style.transform = `scale(${currentFov}) translateZ(0)`;
                 v2.style.transform = `scale(${currentFov}) translateZ(0)`;
             }
+            if (cmd === 'res') swapResolution(val); // NEW: Listens for remote resolution commands
         };
 
         client.connect({ 
@@ -155,7 +156,54 @@
             } catch(e) {}
         }
 
-        // --- THE RESOLUTION WATERFALL ENGINE ---
+        // --- NEW: HOT-SWAP CAMERA ENGINE ---
+        async function swapResolution(resType) {
+            // 1. Physically kill the active camera light
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+            }
+
+            let constraintsList = [];
+            
+            // 2. Build the specific request based on the remote's command
+            if (resType === '4k') {
+                constraintsList.push({ video: { facingMode: "environment", width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 60 } } });
+            } else if (resType === '1080') {
+                constraintsList.push({ video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } } });
+            } else if (resType === '720') {
+                constraintsList.push({ video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 60 } } });
+            } else {
+                // Default Waterfall Auto-Negotiation
+                constraintsList = [
+                    { video: { facingMode: "environment", width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 60 } } },
+                    { video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } } },
+                    { video: { facingMode: "environment", frameRate: { ideal: 60 } } }
+                ];
+            }
+
+            let s = null;
+            for (let constraints of constraintsList) {
+                try {
+                    s = await navigator.mediaDevices.getUserMedia(constraints);
+                    break; 
+                } catch (e) {
+                    console.log("Resolution rejected by device, trying next fallback...");
+                }
+            }
+
+            if (!s) {
+                alert("Camera error: Could not lock resolution.");
+                return;
+            }
+
+            // 3. Mount the new stream and play it
+            currentStream = s;
+            v1.srcObject = s; v2.srcObject = s;
+            
+            v1.onloadedmetadata = () => { v1.play().catch(e=>console.log(e)); };
+            v2.onloadedmetadata = () => { v2.play().catch(e=>console.log(e)); };
+        }
+
         async function setupVR() {
             forceFullscreenFallback();
             requestWakeLock();
@@ -165,44 +213,11 @@
                 return;
             }
 
-            const constraintsList = [
-                { video: { facingMode: "environment", width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 60 } } }, // Try 4K
-                { video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } } }, // Try 1080p HD
-                { video: { facingMode: "environment", frameRate: { ideal: 60 } } } // Safe Fallback
-            ];
-
-            let s = null;
-            logText.innerText = "Negotiating highest possible resolution...";
-
-            for (let constraints of constraintsList) {
-                try {
-                    s = await navigator.mediaDevices.getUserMedia(constraints);
-                    const trackSettings = s.getVideoTracks()[0].getSettings();
-                    console.log(`Camera locked at: ${trackSettings.width}x${trackSettings.height}`);
-                    break; 
-                } catch (e) {
-                    console.log("Resolution rejected by device, trying next level down...");
-                }
-            }
-
-            if (!s) {
-                logText.innerText = "FATAL ERROR: Camera completely blocked by device.";
-                logText.style.color = "#ff4444";
-                return;
-            }
-
-            try {
-                v1.srcObject = s; v2.srcObject = s;
-                
-                v1.onloadedmetadata = () => { v1.play().catch(e => logText.innerText = "Play Error: " + e.message); };
-                v2.onloadedmetadata = () => { v2.play().catch(e => logText.innerText = "Play Error: " + e.message); };
-                
-                document.getElementById('start-screen').style.display = 'none';
-                requestAnimationFrame(loop);
-            } catch (e) { 
-                logText.innerText = `FATAL ERROR: [${e.name}] ${e.message}`;
-                logText.style.color = "#ff4444";
-            }
+            document.getElementById('start-screen').style.display = 'none';
+            
+            // Start the camera automatically using the waterfall method
+            await swapResolution('auto');
+            requestAnimationFrame(loop);
         }
 
         function triggerWipe() {
