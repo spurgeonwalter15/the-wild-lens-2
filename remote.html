@@ -7,14 +7,19 @@
     <style>
         body { background: #111; color: white; font-family: 'Segoe UI', sans-serif; text-align: center; padding: 20px; margin: 0; }
         h1 { color: #00ffcc; letter-spacing: 2px; text-transform: uppercase; font-size: 24px; margin-top: 20px;}
+        
+        /* Updated Grid for 6 Buttons */
         .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; max-width: 440px; margin: 20px auto; }
-        button { padding: 25px; border: none; border-radius: 12px; background: #222; color: #eee; font-size: 16px; cursor: pointer; border: 1px solid #444; font-weight: bold;}
+        button { padding: 25px; border: none; border-radius: 12px; background: #222; color: #eee; font-size: 16px; cursor: pointer; border: 1px solid #444; font-weight: bold; transition: 0.1s;}
         button:hover { background: #333; }
-        button:active { background: #00ffcc; color: #000; }
+        button:active { background: #00ffcc; color: #000; transform: scale(0.98); }
+        
+        .bird-btn { background: #305; border-color: #60a; color: #eaf;}
+        .bird-btn:hover { background: #407;}
         
         #status { font-size: 14px; color: #ff4444; margin-bottom: 20px; font-weight: bold; }
         
-        .slider-box { background: #1a1a1a; max-width: 440px; margin: 20px auto; padding: 20px; border-radius: 12px; border: 1px solid #333; text-align: left;}
+        .slider-box { background: #1a1a1a; max-width: 440px; margin: 20px auto; padding: 20px; border-radius: 12px; border: 1px solid #333; text-align: left; box-sizing: border-box;}
         input[type=range] { width: 100%; margin: 15px 0; accent-color: #00ffcc; cursor: pointer;}
         .sens-label { display: flex; justify-content: space-between; font-size: 14px; color: #aaa; }
         .val-text { color: #00ffcc; font-weight: bold; font-size: 16px; }
@@ -29,7 +34,8 @@
         <button onclick="send('mode:dog')">Dog</button>
         <button onclick="send('mode:horse')">Horse</button>
         <button onclick="send('mode:deer')">Deer</button>
-        <button onclick="send('mode:nightjar')" style="grid-column: span 2;">Nightjar</button>
+        <button onclick="send('mode:nightjar')">Nightjar</button>
+        <button class="bird-btn" onclick="send('mode:hummingbird')">Hummingbird</button>
     </div>
 
     <div class="slider-box">
