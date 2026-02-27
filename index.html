@@ -17,36 +17,49 @@
             color: #00ffcc; cursor: pointer; text-align: center; padding: 20px; box-sizing: border-box;
         }
         #start-screen h1 { font-size: 24px; letter-spacing: 2px; border: 2px solid #00ffcc; padding: 20px 40px; border-radius: 10px;}
-        #start-error { color: #ffaa00; font-size: 14px; margin-top: 20px; font-weight: bold; font-family: monospace; max-width: 80%; word-wrap: break-word;}
+        #start-error { color: #ffaa00; font-size: 14px; margin-top: 20px; font-weight: bold; font-family: monospace;}
 
         #container { display: flex; width: 100vw; height: 100vh; position: relative; }
         .eye { flex: 1; overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; border-right: 1px solid #111; }
         
+        /* The Video element now handles the FOV transform independently */
         video { 
             height: 100%; width: 100%; object-fit: cover; 
-            transform: scale(1.0); border-radius: 50%;
-            transition: filter 0.3s ease, transform 0.2s ease-out; background: #000;
+            transform: scale(1.0); border-radius: 50%; background: #000;
         }
 
+        /* NEW: Central Radial Wipe Animation */
+        @keyframes radialWipe {
+            0% { clip-path: circle(0% at 50% 50%); filter: brightness(3); }
+            100% { clip-path: circle(100% at 50% 50%); filter: brightness(1); }
+        }
+        .wipe-anim { animation: radialWipe 0.6s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
+
+        /* MOVED TO BOTTOM CENTER */
         .vision-label {
-            position: absolute; top: 10%; left: 10%;
-            color: rgba(255, 255, 255, 0.8); font-size: 13px; font-weight: bold;
-            text-transform: uppercase; letter-spacing: 2px; pointer-events: none;
-            text-shadow: 2px 2px 4px rgba(0,0,0,1); z-index: 100; text-align: left;
+            position: absolute; bottom: 15%; left: 0; width: 100%; text-align: center;
+            color: rgba(255, 255, 255, 0.7); font-size: 13px; font-weight: bold;
+            text-transform: uppercase; letter-spacing: 3px; pointer-events: none;
+            text-shadow: 2px 2px 4px rgba(0,0,0,1); z-index: 100;
         }
 
         .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: none; }
         canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: screen; opacity: 0.9; }
 
-        .horse-blindspot { background: linear-gradient(90deg, transparent 32%, #000 38%, #000 62%, transparent 68%); }
-        .deer-streak { background: linear-gradient(0deg, rgba(0,0,0,0.8) 0%, transparent 35%, transparent 65%, rgba(0,0,0,0.8) 100%); backdrop-filter: blur(4px); }
+        /* Scientific Structural Overlays */
+        .horse-blindspot { background: linear-gradient(90deg, transparent 38%, rgba(0,0,0,0.8) 45%, rgba(0,0,0,0.8) 55%, transparent 62%); }
+        .deer-streak { background: linear-gradient(0deg, rgba(0,0,0,0.9) 0%, transparent 40%, transparent 60%, rgba(0,0,0,0.9) 100%); backdrop-filter: blur(5px); }
 
         #sync-light { position: fixed; top: 10px; right: 10px; width: 12px; height: 12px; border-radius: 50%; background: #f00; z-index: 9999; box-shadow: 0 0 5px rgba(0,0,0,0.5); }
 
+        /* Scientific Optic Filters */
         .dog-filter { filter: url(#dichromacy) blur(1.5px) contrast(1.1); }
         .horse-filter { filter: url(#dichromacy) contrast(1.2); }
-        .deer-filter { filter: url(#dichromacy) brightness(1.2) saturate(1.1); }
-        .nightjar-filter { filter: grayscale(1) brightness(1.8) contrast(1.3) sepia(0.6) hue-rotate(180deg); }
+        .deer-filter { filter: url(#dichromacy) brightness(1.2); }
+        .nightjar-filter { filter: grayscale(1) brightness(1.5) contrast(1.3) sepia(0.6) hue-rotate(180deg); }
+        
+        /* NEW: Hummingbird - Oil Droplets + UV/Red Enhancement */
+        .hummingbird-filter { filter: saturate(2.5) contrast(1.3) hue-rotate(-15deg) brightness(1.1); }
     </style>
 </head>
 <body onclick="forceFullscreenFallback()">
@@ -87,10 +100,11 @@
         const ctx1 = c1.getContext('2d'); const ctx2 = c2.getContext('2d');
         const sync = document.getElementById('sync-light');
         const labels = [document.getElementById('lbl1'), document.getElementById('lbl2')];
-        const logText = document.getElementById('start-error'); // Diagnostic output
+        const logText = document.getElementById('start-error');
 
         let currentMode = 'normal';
         let sens = 50;
+        let currentFov = 1.0;
 
         const pCanv = document.createElement('canvas'); pCanv.width = 128; pCanv.height = 128;
         const pCtx = pCanv.getContext('2d', { willReadFrequently: true });
@@ -104,8 +118,9 @@
             if (cmd === 'mode') setMode(val);
             if (cmd === 'sens') sens = parseInt(val);
             if (cmd === 'fov') {
-                v1.style.transform = `scale(${val})`;
-                v2.style.transform = `scale(${val})`;
+                currentFov = val;
+                v1.style.transform = `scale(${currentFov})`;
+                v2.style.transform = `scale(${currentFov})`;
             }
         };
 
@@ -118,52 +133,60 @@
         function forceFullscreenFallback() {
             try {
                 const docEl = document.documentElement;
-                if (docEl.requestFullscreen) {
-                    docEl.requestFullscreen().catch(()=>{});
-                } else if (docEl.webkitRequestFullscreen) {
-                    docEl.webkitRequestFullscreen(); 
-                }
+                if (docEl.requestFullscreen) docEl.requestFullscreen().catch(()=>{});
+                else if (docEl.webkitRequestFullscreen) docEl.webkitRequestFullscreen(); 
             } catch(e) {}
         }
 
         async function setupVR() {
-            logText.innerText = "Step 1: Attempting to grab camera...";
             forceFullscreenFallback();
-
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 logText.innerText = "ERROR: Browser API completely blocked. Check HTTPS or Settings.";
                 return;
             }
 
             try {
-                // REMOVED { ideal: 1920 } TO PREVENT OVERCONSTRAINED CRASH
                 const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-                
-                logText.innerText = "Step 2: Camera found. Routing to VR lenses...";
                 v1.srcObject = s; v2.srcObject = s;
                 
-                v1.onloadedmetadata = () => { v1.play().catch(e => logText.innerText = "Play Error V1: " + e.message); };
-                v2.onloadedmetadata = () => { v2.play().catch(e => logText.innerText = "Play Error V2: " + e.message); };
+                v1.onloadedmetadata = () => { v1.play().catch(e => logText.innerText = "Play Error: " + e.message); };
+                v2.onloadedmetadata = () => { v2.play().catch(e => logText.innerText = "Play Error: " + e.message); };
                 
-                // If we survive to this point, hide the screen and start!
                 document.getElementById('start-screen').style.display = 'none';
                 requestAnimationFrame(loop);
-
             } catch (e) { 
-                // This is the money shot: it will tell us EXACTLY why it crashed
                 logText.innerText = `FATAL ERROR: [${e.name}] ${e.message}`;
                 logText.style.color = "#ff4444";
             }
         }
 
+        // TRIGGERS THE NEW TRANSITION EFFECT
+        function triggerWipe() {
+            v1.classList.remove('wipe-anim'); v2.classList.remove('wipe-anim');
+            void v1.offsetWidth; // Force a CSS reflow to restart the animation
+            v1.classList.add('wipe-anim'); v2.classList.add('wipe-anim');
+        }
+
         function setMode(m) {
+            if (m === currentMode) return;
             currentMode = m;
+            
+            triggerWipe(); // Start the center transition
+
             document.querySelectorAll('.overlay').forEach(o => o.style.display = "none");
             
-            v1.className = (m === 'normal') ? "" : m + "-filter";
-            v2.className = (m === 'normal') ? "" : m + "-filter";
+            // Add the base filter class PLUS the wipe animation class
+            v1.className = (m === 'normal') ? "wipe-anim" : m + "-filter wipe-anim";
+            v2.className = (m === 'normal') ? "wipe-anim" : m + "-filter wipe-anim";
             
-            const modeNames = { 'normal':'Human Vision', 'dog':'Dog Vision', 'horse':'Horse Vision', 'deer':'Deer Vision', 'nightjar':'Nightjar Vision' };
+            const modeNames = { 
+                'normal':'Human Vision', 
+                'dog':'Dog Vision', 
+                'horse':'Horse Vision', 
+                'deer':'Deer Vision', 
+                'nightjar':'Nightjar Vision',
+                'hummingbird':'Hummingbird Vision'
+            };
             labels.forEach(l => l.innerText = modeNames[m] || 'Unknown');
 
             if (m === 'horse') document.querySelectorAll('.horse-blindspot').forEach(o => o.style.display = "block");
