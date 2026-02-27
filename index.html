@@ -27,7 +27,6 @@
             transform: scale(1.0); border-radius: 50%; background: #000;
         }
 
-        /* FIX: Removed 'filter' from keyframes so it doesn't erase the animal colors */
         @keyframes radialWipe {
             0% { clip-path: circle(0% at 50% 50%); opacity: 0.3; }
             100% { clip-path: circle(100% at 50% 50%); opacity: 1; }
@@ -45,7 +44,16 @@
         canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: screen; opacity: 0.9; }
 
         .horse-blindspot { background: linear-gradient(90deg, transparent 38%, rgba(0,0,0,0.8) 45%, rgba(0,0,0,0.8) 55%, transparent 62%); }
-        .deer-streak { background: linear-gradient(0deg, rgba(0,0,0,0.9) 0%, transparent 40%, transparent 60%, rgba(0,0,0,0.9) 100%); backdrop-filter: blur(5px); }
+        
+        /* FIX: Real Visual Streak using a CSS Mask */
+        .deer-streak { 
+            background: rgba(0,0,0,0.4); 
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            /* This cuts a perfectly clear window horizontally across the middle 30% of the screen */
+            -webkit-mask-image: linear-gradient(0deg, black 0%, black 20%, transparent 35%, transparent 65%, black 80%, black 100%);
+            mask-image: linear-gradient(0deg, black 0%, black 20%, transparent 35%, transparent 65%, black 80%, black 100%);
+        }
 
         #sync-light { position: fixed; top: 10px; right: 10px; width: 12px; height: 12px; border-radius: 50%; background: #f00; z-index: 9999; box-shadow: 0 0 5px rgba(0,0,0,0.5); }
 
@@ -169,7 +177,6 @@
 
             document.querySelectorAll('.overlay').forEach(o => o.style.display = "none");
             
-            // Re-apply the specific filter class alongside the animation class
             v1.className = (m === 'normal') ? "wipe-anim" : m + "-filter wipe-anim";
             v2.className = (m === 'normal') ? "wipe-anim" : m + "-filter wipe-anim";
             
@@ -184,7 +191,10 @@
             labels.forEach(l => l.innerText = modeNames[m] || 'Unknown');
 
             if (m === 'horse') document.querySelectorAll('.horse-blindspot').forEach(o => o.style.display = "block");
-            if (m === 'deer') document.getElementById('od1').style.display = document.getElementById('od2').style.display = "block";
+            if (m === 'deer') {
+                document.getElementById('od1').style.display = "block";
+                document.getElementById('od2').style.display = "block";
+            }
         }
 
         function loop() {
